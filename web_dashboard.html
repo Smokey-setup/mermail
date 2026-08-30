@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Mermail Sovereign Agent Engine</title>
+    <title>Mermail Sovereign Agent</title>
     <style>
         :root {
             --bg-base: #120c0c;
@@ -282,7 +282,7 @@
 </head>
 <body>
 
-    <h1> MERMAIL SOVEREIGN SYSTEM COMMAND</h1>
+    <h1> MERMAIL SOVEREIGN SYSTEM </h1>
 
     <div class="header-panel">
         <div class="wallet-info">
@@ -290,7 +290,7 @@
             <p>MERMAIL WALLET: <span id="agent-wallet" class="highlight">Connecting to ledger...</span></p>
         </div>
         <div>
-            <p>SYSTEM TELEMETRY: <span class="status-blink">● LISTENING FOR INCOMING EVENTS</span></p>
+            <p>SYSTEM : <span class="status-blink">● LISTENING To INCOMING EVENTS</span></p>
         </div>
     </div>
 
@@ -306,9 +306,9 @@
         <div class="form-group">
             <label>Diagnostic Framework Category</label>
             <select id="task-category">
-                <option value="CODE_GENERATION">CODE_GENERATION (Cost: 0.05 SOL | SLA: 01:00 Mins)</option>
-                <option value="TECHNICAL_AUDIT">TECHNICAL_AUDIT (Cost: 0.10 SOL | SLA: 2:00 Mins)</option>
-                <option value="DATA_ANALYSIS">DATA_ANALYSIS (Cost: 0.03 SOL | SLA: 03:00 Mins)</option>
+                <option value="CODE_GENERATION">CODE_GENERATION (Cost: 0.01 SOL | SLA: 01:00 Mins)</option>
+                <option value="TECHNICAL_AUDIT">TECHNICAL_AUDIT (Cost: 0.01 SOL | SLA: 02:00 Mins)</option>
+                <option value="DATA_ANALYSIS">DATA_ANALYSIS (Cost: 0.01 SOL | SLA: 03:00 Mins)</option>
             </select>
         </div>
 
@@ -317,12 +317,12 @@
             <textarea id="task-prompt" rows="4" placeholder="Type instructions or paste broken codebase logic here..."></textarea>
         </div>
 
-        <button class="btn-submit-job" onclick="dispatchJobToServer()">🚀 GENERATE DYNAMIC ESCROW QUOTE</button>
+        <button class="btn-submit-job" onclick="dispatchJobToServer()"> GET QUOTE</button>
     </div>
 
     <!-- Hidden PayBox Security Gateway Component -->
     <div id="paybox-gateway" class="paybox-modal">
-        <h3 style="margin-top:0; color: var(--accent-cyan);">⚠️ SECURE PAYBOX SECURITY GATEWAY</h3>
+        <h3 style="margin-top:0; color: var(--accent-cyan);"> PAYBOX SECURITY </h3>
 
         <p style="font-size: 14px;">
             Please transfer exactly
@@ -335,7 +335,7 @@
         </p>
 
         <div class="modal-buttons">
-            <button class="btn-modal-utility" onclick="copyAddressToClipboard()">📋 COPY TARGET ADDRESS</button>
+            <button class="btn-modal-utility" onclick="copyAddressToClipboard()">📋 COPY ADDRESS</button>
             <button class="btn-modal-utility" onclick="window.open('https://phantom.app', '_blank')">🔗 OPEN PHANTOM</button>
             <button class="btn-pay-submit" onclick="executePaymentVerification()">💳 I HAVE CONFIRMED PAYMENT</button>
         </div>
@@ -367,7 +367,7 @@
     <!-- Output Code Display Asset Sheet -->
     <div id="output-panel" class="output-panel">
         <h3 id="output-title" style="margin-top:0; color: var(--accent-cyan); border-bottom: 1px solid var(--bg-border); padding-bottom: 8px;">
-            📦 FINAL PIPELINE COMPILED DELIVERABLE
+            COMPILED
         </h3>
         <pre id="output-content">Asset data layer extraction loading...</pre>
     </div>
@@ -424,7 +424,7 @@
 
                 if (data.status === 'success') {
                     triggerCustomAlert(
-                        "🚀 ESCROW BROADCASTED",
+                        "  BROADCASTED",
                         "Specifications enqueued. State tracking array generated."
                     );
 
@@ -444,8 +444,8 @@
             navigator.clipboard.writeText(activeSystemWallet);
 
             triggerCustomAlert(
-                "📋 SYSTEM EVENT",
-                "Wallet address copied to your clipboard framework!"
+                " SYSTEM EVENT",
+                "Wallet address copied to clipboard!"
             );
         }
 
@@ -465,8 +465,8 @@
             if (!selectedJobId) return;
 
             triggerCustomAlert(
-                "⏳ BLOCK SCAN TRIGGERED",
-                "Invoking Solana Testnet ledger sweep parameter..."
+                "⏳ BLOCK SCANNING",
+                "Checking Solana Testnet ledger..."
             );
 
             try {
@@ -508,7 +508,7 @@
 
                 if (data.status === 'success') {
                     document.getElementById('output-title').textContent =
-                        `📦 FINAL COMPILED DELIVERABLE FOR ASSET ${jobId}`;
+                        `📦 COMPILED DELIVERABLE FOR ASSET ${jobId}`;
 
                     document.getElementById('output-content').textContent =
                         data.content;
@@ -521,7 +521,7 @@
                 } else {
                     triggerCustomAlert(
                         "⏳ COMPILING",
-                        "Gemini engine is rendering content. Hold on..."
+                        " engine is rendering content. Hold on..."
                     );
                 }
             } catch (e) {
@@ -582,7 +582,7 @@
                                 class="btn-action"
                                 onclick="launchPaymentGateway('${job.id}', ${job.quote})"
                             >
-                                🚀 INITIATE ESCROW
+                            INITIATE 
                             </button>
                         `;
                     } else if (job.status === 'paid') {
@@ -598,7 +598,7 @@
                                 style="border-color:var(--accent-gold); color:var(--accent-gold);"
                                 onclick="fetchDeliverableAsset('${job.id}')"
                             >
-                                📦 VIEW OUTPUT
+                           📦  VIEW RESULT
                             </button>
                         `;
                     }
