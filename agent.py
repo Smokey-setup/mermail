@@ -23,8 +23,8 @@ STATE_FILE = "state.json"
 # Flat Category Pricing Matrix (SOL) & Fixed Deadlines
 PRICING_TIERS = {
     "CODE_GENERATION": {"price": 0.05, "sla": "01:00 Mins"},
-    "TECHNICAL_AUDIT": {"price": 0.10, "sla": "2:00 Mins"},
-    "DATA_ANALYSIS": {"price": 0.03, "sla": "03:00 Mins"}
+    "TECHNICAL_AUDIT": {"price": 0.10, "sla": "01:00 Mins"},
+    "DATA_ANALYSIS": {"price": 0.03, "sla": "01:00 Mins"}
 }
 
 class JobState(BaseModel):
