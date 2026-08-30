@@ -4,15 +4,16 @@ MERMAIL AUTONOMOUS FREELANCE AGENT (MICRO-SAAS ENGINE)
 ================================================================================
 Architecture: Single-file enterprise async engine for Mermail Skill integration.
 Author: Mermail Skill Developer
-Dependencies: anthropic, pydantic, python-dotenv, requests, httpx, rich
+Dependencies: pydantic, python-dotenv, requests, httpx, rich
 
 Capabilities:
   1. Autonomous Email Ingestion via Mermail Inbox API / MCP.
   2. Intent Classification & Work Complexity Estimation.
   3. Dynamic USDC Quote Generation & Outbound Email Dispatch.
   4. Real-time On-chain Transaction & Balance Monitoring via Mermail Wallet.
-  5. LLM Task Execution (Code Gen, Technical Audits, Data Analysis).
+  5. LLM Task Execution (Code Gen, Technical Audits, Data Analysis) via FREE Gemini API.
   6. Final Asset Delivery & Transaction Receipt Generation via Email.
+  7. Dual UI: Rich Terminal Interface + Live Web Dashboard.
 ================================================================================
 """
 
@@ -36,6 +37,9 @@ from rich.live import Live
 from rich.layout import Layout
 from rich.text import Text
 
+# Import separated Web UI logic
+from web_ui import WebDashboardExporter
+
 # Load Environment Variables
 load_dotenv()
 
@@ -56,8 +60,11 @@ logging.basicConfig(
 MERMAIL_API_BASE_URL = os.getenv("MERMAIL_API_BASE_URL", "https://api.mermail.app/v1")
 MERMAIL_API_KEY = os.getenv("MERMAIL_API_KEY", "demo_mermail_key_sec_994810293")
 MERMAIL_AGENT_WALLET_ADDRESS = os.getenv("MERMAIL_AGENT_WALLET_ADDRESS", "0x742d35Cc6634C0532925a3b844Bc454e4438f44e")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+# Swapped to FREE Gemini API
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+ENABLE_WEB_UI = os.getenv("ENABLE_WEB_UI", "true").lower() == "true"
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 PAYMENT_TIMEOFF_MINUTES = int(os.getenv("PAYMENT_TIMEOFF_MINUTES", "15"))
 
@@ -114,10 +121,7 @@ class JobState(BaseModel):
 # MERMAIL MCP & REST TRANSPORT CLIENT
 # ==============================================================================
 class MermailClient:
-    """
-    Handles robust asynchronous integration with Mermail APIs and MCP transports.
-    Manages Inbox reading, Outbound Email dispatch, and Wallet verification.
-    """
+    """Handles robust asynchronous integration with Mermail APIs."""
     def __init__(self, api_base_url: str, api_key: str, wallet_address: str):
         self.base_url = api_base_url
         self.api_key = api_key
@@ -130,10 +134,8 @@ class MermailClient:
         self.mock_mode = (api_key.startswith("demo_"))
 
     async def fetch_unread_messages(self) -> List[EmailMessage]:
-        """Fetches new, unprocessed email requests from Mermail Inbox."""
         if self.mock_mode:
             await asyncio.sleep(0.5)
-            # Simulated incoming email for smooth demo flows if running offline
             return self._get_mock_inbox_messages()
 
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -157,7 +159,6 @@ class MermailClient:
                 return []
 
     async def send_email_reply(self, thread_id: str, recipient: str, subject: str, body: str) -> bool:
-        """Dispatches an email reply to a client thread via Mermail Inbox."""
         payload = {
             "thread_id": thread_id,
             "recipient": recipient,
@@ -179,12 +180,7 @@ class MermailClient:
                 return False
 
     async def check_wallet_incoming_payment(self, expected_amount: float, client_email: str) -> Tuple[bool, Optional[str]]:
-        """
-        Polls the Agent Wallet via Mermail MCP to check for recent incoming transactions
-        matching the expected USDC amount.
-        """
         if self.mock_mode:
-            # Simulated auto-payment trigger after demo delay
             await asyncio.sleep(0.2)
             mock_hash = f"0x{uuid.uuid4().hex}{uuid.uuid4().hex[:8]}"
             return True, mock_hash
@@ -209,7 +205,6 @@ class MermailClient:
                 return False, None
 
     def _get_mock_inbox_messages(self) -> List[EmailMessage]:
-        """Provides fallback mock message trigger for demonstration setup."""
         if not hasattr(self, "_mock_triggered"):
             self._mock_triggered = True
             return [
@@ -225,19 +220,15 @@ class MermailClient:
         return []
 
 # ==============================================================================
-# TASK EVALUATOR & WORKFORCE ENGINE (LLM INTEGRATION)
+# TASK EVALUATOR & WORKFORCE ENGINE (GEMINI 1.5 FLASH FREE)
 # ==============================================================================
 class AgentWorkforceEngine:
-    """
-    Executes intent evaluation, quote generation, and deliverable creation
-    using systemic prompt logic.
-    """
-    def __init__(self, anthropic_key: str):
-        self.api_key = anthropic_key
-        self.mock_mode = len(anthropic_key) < 10
+    """Executes intent evaluation, quote generation, and deliverable creation."""
+    def __init__(self, gemini_key: str):
+        self.api_key = gemini_key
+        self.mock_mode = len(gemini_key) < 10
 
     async def analyze_request_and_categorize(self, body: str) -> Tuple[ServiceCategory, float]:
-        """Analyzes client prompt body and calculates dynamic pricing based on complexity."""
         body_lower = body.lower()
         
         category = ServiceCategory.GENERAL_QUERY
@@ -251,42 +242,34 @@ class AgentWorkforceEngine:
             category = ServiceCategory.DATA_ANALYSIS
 
         base_price = BASE_PRICING_USDC[category.value]
-        # Dynamic surcharge for length/complexity
         length_surcharge = 0.50 if len(body) > 300 else 0.00
         final_price = round(base_price + length_surcharge, 2)
         
         return category, final_price
 
     async def generate_task_deliverable(self, prompt: str, category: ServiceCategory) -> str:
-        """Executes the paid task using LLM capabilities."""
         if self.mock_mode:
             await asyncio.sleep(1.5)
             return self._generate_synthetic_output(prompt, category)
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            headers = {
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
+            headers = {"Content-Type": "application/json"}
             payload = {
-                "model": "claude-3-5-sonnet-20241022",
-                "max_tokens": 1500,
-                "messages": [
-                    {"role": "user", "content": f"Execute the following paid technical task cleanly:\n{prompt}"}
-                ]
+                "contents": [{
+                    "parts": [{"text": f"You are a professional AI freelancer. Execute the following paid technical task cleanly. Deliver only the result:\n\n{prompt}"}]
+                }]
             }
             try:
-                res = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+                res = await client.post(url, headers=headers, json=payload)
                 res.raise_for_status()
                 data = res.json()
-                return data["content"][0]["text"]
+                return data["candidates"][0]["content"]["parts"][0]["text"]
             except Exception as e:
-                logging.error(f"Anthropic API execution error: {str(e)}")
+                logging.error(f"Gemini API execution error: {str(e)}")
                 return f"[EXECUTION ERROR] Unable to generate deliverable: {str(e)}"
 
     def _generate_synthetic_output(self, prompt: str, category: ServiceCategory) -> str:
-        """Fallback deliverable generator for deterministic video demo stability."""
         return (
             "```python\n"
             "# Autonomous Deliverable generated by Mermail Agent\n"
@@ -313,7 +296,6 @@ class AgentWorkforceEngine:
 # STATE MANAGEMENT ENGINE
 # ==============================================================================
 class AgentStateManager:
-    """Thread-safe state persistence and job lifecycle tracker."""
     def __init__(self):
         self.jobs: Dict[str, JobState] = {}
 
@@ -341,7 +323,6 @@ class AgentStateManager:
 # LIVE RICH TERMINAL USER INTERFACE
 # ==============================================================================
 class AgentConsoleDashboard:
-    """Generates a professional terminal UI for real-time video demonstrations."""
     @staticmethod
     def render(state_manager: AgentStateManager, agent_wallet: str) -> Panel:
         table = Table(title="Active Mermail Agent Micro-SaaS Jobs", expand=True)
@@ -387,11 +368,17 @@ class AgentConsoleDashboard:
 # ==============================================================================
 async def main_event_loop():
     mermail_client = MermailClient(MERMAIL_API_BASE_URL, MERMAIL_API_KEY, MERMAIL_AGENT_WALLET_ADDRESS)
-    workforce_engine = AgentWorkforceEngine(ANTHROPIC_API_KEY)
+    workforce_engine = AgentWorkforceEngine(GEMINI_API_KEY)
     state_manager = AgentStateManager()
 
     console.clear()
     console.print("[bold green]Starting Mermail Autonomous Freelance Agent...[/bold green]")
+    
+    if ENABLE_WEB_UI:
+        WebDashboardExporter.update_dashboard(state_manager.jobs.values(), MERMAIL_AGENT_WALLET_ADDRESS)
+        console.print("[bold cyan]Web Dashboard tracking initialized (web_dashboard.html).[/bold cyan]")
+        console.print("[bold yellow]To view in GitHub Codespaces, open a new terminal and run: python -m http.server 8080[/bold yellow]")
+
     await asyncio.sleep(1.0)
 
     with Live(AgentConsoleDashboard.render(state_manager, MERMAIL_AGENT_WALLET_ADDRESS), refresh_per_second=2) as live:
@@ -402,7 +389,6 @@ async def main_event_loop():
                 # ------------------------------------------------------------------
                 new_messages = await mermail_client.fetch_unread_messages()
                 for msg in new_messages:
-                    # Avoid duplicate processing
                     if any(j.thread_id == msg.thread_id for j in state_manager.jobs.values()):
                         continue
 
@@ -417,7 +403,6 @@ async def main_event_loop():
                     )
                     state_manager.register_job(job)
 
-                    # Compose Dynamic Quote Email
                     quote_email_body = (
                         f"Hello!\n\n"
                         f"I have reviewed your request regarding: '{msg.subject}'.\n"
@@ -491,8 +476,11 @@ async def main_event_loop():
                                 deliverable=deliverable_content
                             )
 
-                # Update Rich Live Console Display
+                # Update UIs (Terminal + Web)
                 live.update(AgentConsoleDashboard.render(state_manager, MERMAIL_AGENT_WALLET_ADDRESS))
+                if ENABLE_WEB_UI:
+                    WebDashboardExporter.update_dashboard(state_manager.jobs.values(), MERMAIL_AGENT_WALLET_ADDRESS)
+                
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
             except KeyboardInterrupt:
