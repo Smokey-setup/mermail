@@ -1,172 +1,113 @@
-import logging
+import http.server
+import socketserver
+import json
 import os
+import threading
+import time
+from urllib.parse import urlparse, parse_qs
 
-class WebDashboardExporter:
-    """Writes a live, responsive HTML dashboard with dynamic input and response capabilities."""
-    
-    # Changed to index.html so python -m http.server opens it instantly!
-    FILE_NAME = "index.html"
+PORT = 8000
+STATE_FILE = "state.json"
 
-    @classmethod
-    def update_dashboard(cls, jobs_iterable, agent_wallet: str):
-        rows_html = ""
-        recent_jobs = list(jobs_iterable)[-10:]
+payment_trigger_queue = []
+on_chain_hashes = {}
+
+class MermailDashboardHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        """Suppresses default HTTP logging to keep your rich terminal interface clean."""
+        return
+
+    def end_headers(self):
+        """Injects clean CORS headers so your Vite frontend can communicate without browser blocking."""
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        """Handles browser pre-flight safety checks gracefully."""
+        self.send_response(200)
+        self.end_headers()
+
+    def do_GET(self):
+        parsed_url = urlparse(self.path)
         
-        for job in reversed(recent_jobs):
-            tx = job.payment_tx_hash[:15] + "..." if job.payment_tx_hash else "PENDING"
-            status_color = "#eab308" # yellow
+        if parsed_url.path == "/api/state":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
             
-            if job.status.value == "DELIVERED":
-                status_color = "#22c55e" # green
-            elif job.status.value == "PAYMENT_VERIFIED":
-                status_color = "#06b6d4" # cyan
+            if os.path.exists(STATE_FILE):
+                with open(STATE_FILE, "r") as f:
+                    self.wfile.write(f.read().encode('utf-8'))
+            else:
+                fallback = {"agent_wallet": "Configuring...", "jobs": []}
+                self.wfile.write(json.dumps(fallback).encode('utf-8'))
+                
+        elif parsed_url.path == "/api/view-deliverable":
+            query_params = parse_qs(parsed_url.query)
+            job_id = query_params.get("id", [None])[0]
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            
+            asset_path = f"deliverable_{job_id}.txt" if job_id else ""
+            if asset_path and os.path.exists(asset_path):
+                with open(asset_path, "r") as f:
+                    self.wfile.write(json.dumps({"status": "success", "content": f.read()}).encode('utf-8'))
+            else:
+                self.wfile.write(json.dumps({"status": "error", "message": "Asset compilation processing..."}).encode('utf-8'))
+        else:
+            super().do_GET()
 
-            rows_html += f"""
-            <tr style="border-bottom: 1px solid #334155;">
-                <td class="p-3" style="color: #38bdf8;">{job.job_id[:8]}</td>
-                <td class="p-3" style="color: #e879f9; word-break: break-all;">{job.client_email}</td>
-                <td class="p-3" style="color: #4ade80;">{job.category.value}</td>
-                <td class="p-3" style="color: #facc15;">${job.quoted_price_usdc:.2f}</td>
-                <td class="p-3" style="color: {status_color}; font-weight: bold;">{job.status.value}</td>
-                <td class="p-3" style="color: #60a5fa; word-break: break-all;">{tx}</td>
-            </tr>
-            """
-
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <!-- Makes the dashboard responsive on mobile and varying screen sizes -->
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Mermail Agent Live Dashboard</title>
-            <style>
-                * {{ box-sizing: border-box; }}
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 20px; margin: 0; line-height: 1.6; }}
-                .container {{ max-width: 1200px; margin: 0 auto; }}
-                h1 {{ color: #ffffff; text-align: center; margin-bottom: 30px; font-size: 2rem; }}
+    def do_POST(self):
+        parsed_url = urlparse(self.path)
+        
+        if parsed_url.path == "/api/verify-payment":
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                payload = json.loads(post_data.decode('utf-8'))
+                job_id = payload.get("id")
+                client_wallet = payload.get("client_wallet", "Unknown")
                 
-                /* Responsive Panels */
-                .panel {{ background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #334155; }}
-                .text-center {{ text-align: center; }}
-                .highlight {{ color: #fbbf24; font-weight: bold; word-break: break-all; }}
-                .status-blink {{ color: #4ade80; animation: blinker 1.5s linear infinite; font-weight: bold; }}
-                @keyframes blinker {{ 50% {{ opacity: 0; }} }}
-                
-                /* Grid Layout for Input/Output that stacks on small screens */
-                .grid {{ display: grid; grid-template-columns: 1fr; gap: 20px; }}
-                @media (min-width: 768px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
-                
-                /* Form Elements */
-                label {{ display: block; margin-bottom: 5px; color: #cbd5e1; font-weight: bold; font-size: 0.9rem; }}
-                input, textarea {{ width: 100%; padding: 12px; margin-bottom: 15px; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 6px; font-family: monospace; resize: vertical; }}
-                input:focus, textarea:focus {{ outline: none; border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }}
-                button {{ background: #38bdf8; color: #0f172a; padding: 12px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.3s; width: 100%; font-size: 1rem; }}
-                button:hover {{ background: #0ea5e9; }}
-                button:disabled {{ background: #475569; cursor: not-allowed; }}
-                
-                /* Response Box */
-                #response-box {{ background: #000000; padding: 15px; border-radius: 6px; border: 1px solid #334155; min-height: 200px; font-family: monospace; color: #4ade80; white-space: pre-wrap; overflow-y: auto; font-size: 0.9rem; }}
-                
-                /* Responsive Table */
-                .table-wrapper {{ overflow-x: auto; }}
-                table {{ width: 100%; border-collapse: collapse; min-width: 700px; }}
-                th {{ background: #334155; color: #cbd5e1; text-align: left; padding: 12px; font-size: 0.9rem; }}
-                .p-3 {{ padding: 12px; font-size: 0.9rem; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🤖 Mermail Autonomous Agent</h1>
-                
-                <div class="panel text-center">
-                    <p>MERMAIL AGENT WALLET: <span class="highlight">{agent_wallet}</span></p>
-                    <p>SYSTEM STATUS: <span class="status-blink">● LISTENING FOR EVENTS & REQUESTS</span></p>
-                </div>
-
-                <div class="grid">
-                    <!-- Dynamic Input Form -->
-                    <div class="panel">
-                        <h2 style="margin-top:0; color: #38bdf8; font-size: 1.25rem;">Submit New Request</h2>
-                        <form id="agent-form">
-                            <label for="client_email">Your Email Address:</label>
-                            <input type="email" id="client_email" placeholder="client@example.com" required>
-                            
-                            <label for="task_prompt">Task Details / Prompt:</label>
-                            <textarea id="task_prompt" rows="5" placeholder="Describe the task, code, or analysis you need the agent to perform..." required></textarea>
-                            
-                            <button type="submit" id="submit-btn">Dispatch to Agent Engine</button>
-                        </form>
-                    </div>
+                if job_id:
+                    payment_trigger_queue.append({"id": job_id, "client_wallet": client_wallet})
                     
-                    <!-- Clean Response Box -->
-                    <div class="panel">
-                        <h2 style="margin-top:0; color: #4ade80; font-size: 1.25rem;">Agent Response Output</h2>
-                        <div id="response-box">[SYSTEM] Interface ready. Awaiting user input...</div>
-                    </div>
-                </div>
+                    timeout = 10
+                    while timeout > 0 and job_id not in on_chain_hashes:
+                        time.sleep(0.5)
+                        timeout -= 0.5
+                    
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    
+                    if job_id in on_chain_hashes:
+                        response_body = {"status": "success", "tx_hash": on_chain_hashes[job_id]}
+                    else:
+                        response_body = {"status": "scanning", "message": "Transaction routing on Solana network..."}
+                        
+                    self.wfile.write(json.dumps(response_body).encode('utf-8'))
+                    return
+            except Exception as e:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
+                return
 
-                <!-- Live Job Table -->
-                <div class="panel">
-                    <h2 style="margin-top:0; color: #facc15; font-size: 1.25rem;">Live Active Jobs</h2>
-                    <div class="table-wrapper">
-                        <table>
-                            <thead>
-                                <tr><th>Job ID</th><th>Client</th><th>Category</th><th>Quote</th><th>Status</th><th>Tx Hash</th></tr>
-                            </thead>
-                            <tbody id="job-table-body">
-                                {rows_html}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "error", "message": "Invalid tracking parameters"}).encode('utf-8'))
 
-            <script>
-                // 1. Handle Input Form Submission Dynamically
-                document.getElementById('agent-form').addEventListener('submit', function(e) {{
-                    e.preventDefault(); 
-                    
-                    const email = document.getElementById('client_email').value;
-                    const prompt = document.getElementById('task_prompt').value;
-                    const responseBox = document.getElementById('response-box');
-                    const btn = document.getElementById('submit-btn');
-                    
-                    btn.disabled = true;
-                    btn.innerText = "Processing Payload...";
-                    responseBox.innerHTML = "<span style='color: #fbbf24;'>[SYSTEM] Transmitting payload... Analyzing task complexity...</span>";
-                    
-                    // Simulate the backend hand-off. 
-                    // Note: To fully connect this HTML form to Python, the Python script needs to be upgraded from `http.server` to an API like FastAPI or Flask.
-                    setTimeout(() => {{
-                        responseBox.innerHTML = `[✓] REQUEST SUCCESSFULLY CAPTURED\\n\\n[CLIENT]: ${{email}}\\n[TASK]: ${{prompt}}\\n\\n[STATUS]: Passed to Agent Engine for quote generation. Watch your inbox or the live table below for updates.`;
-                        btn.disabled = false;
-                        btn.innerText = "Dispatch to Agent Engine";
-                        document.getElementById('agent-form').reset();
-                    }}, 1500);
-                }});
-                
-                // 2. Refresh ONLY the table data so user input isn't erased while they type
-                setInterval(async () => {{
-                    try {{
-                        const response = await fetch(window.location.href);
-                        const text = await response.text();
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(text, 'text/html');
-                        const newTable = doc.getElementById('job-table-body');
-                        if(newTable) {{
-                            document.getElementById('job-table-body').innerHTML = newTable.innerHTML;
-                        }}
-                    }} catch (err) {{
-                        console.error("Silent background refresh failed:", err);
-                    }}
-                }}, 2000);
-            </script>
-        </body>
-        </html>
-        """
-        try:
-            with open(cls.FILE_NAME, "w", encoding="utf-8") as f:
-                f.write(html_content)
-        except Exception as e:
-            logging.error(f"Failed to update web dashboard: {str(e)}")
+def run_server():
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.TCPServer(("", PORT), MermailDashboardHandler) as httpd:
+        httpd.serve_forever()
+
+def start_dashboard():
+    """Launches the UI server in an independent background thread to keep execution smooth."""
+    srv_thread = threading.Thread(target=run_server, daemon=True)
+    srv_thread.start()
