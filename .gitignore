@@ -1,12 +1,8 @@
-# Runtime state
-state.json
 
-# Generated agent deliverables
+state.json
 deliverable_*.txt
 
-# Python cache
 __pycache__/
 *.py[cod]
 *.pyc
-# Environment secrets
 .env
