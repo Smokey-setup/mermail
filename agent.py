@@ -54,7 +54,7 @@ async def call_free_gemini_api(category: str, prompt_body: str) -> str:
         return f"=== [MOCK DELIVERABLE FOR {category}] ===\nSuccessfully compiled technical solution script asset framework layout. Ensure GEMINI_API_KEY is configured in your .env for real LLM generations."
         
     api_gateway_host = "generativelanguage" + ".googleapis.com"
-    api_route_endpoint = "/v1beta/models/gemini-2.5-flash:generateContent"
+    api_route_endpoint = "/v1beta/models/gemini-1.5-flash:generateContent"
     url = f"https://{api_gateway_host}{api_route_endpoint}?key={GEMINI_API_KEY}"
     
     system_prompt = "Execute technical software development or audit tasks cleanly and output professional code or markdown reports immediately."
